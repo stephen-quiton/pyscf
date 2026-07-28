@@ -1174,8 +1174,9 @@ maximum memory %.2f MB. Try giving PySCF more memory."""
 def wrap_int3c_nospltbas(cell, auxcell, omega, shlpr_mask, prescreening_data,
                          intor='int3c2e', aosym='s1',
                          comp=1, kptij_lst=np.zeros((1,2,3)),
-                         cintopt=None, bvk_kmesh=None):
-    log = logger.Logger(cell.stdout, cell.verbose)
+                         cintopt=None, bvk_kmesh=None, order='ijL',
+                         verbose=None):
+    log = logger.new_logger(cell, verbose)
 
     refuniqshl_map, auxuniqshl_map, nbasauxuniq, uniqexp, dcut2s, dstep_BOHR, Rcut2s, dijs_loc, Ls = prescreening_data
 
@@ -1205,7 +1206,6 @@ def wrap_int3c_nospltbas(cell, auxcell, omega, shlpr_mask, prescreening_data,
         bvk_nimgs = Ls_.shape[0]
 
     if gamma_point(kptij_lst):
-        assert (aosym[:2] == "s2")
         kk_type = 'g'
         dtype = np.double
         nkpts = nkptij = 1
@@ -1244,6 +1244,8 @@ def wrap_int3c_nospltbas(cell, auxcell, omega, shlpr_mask, prescreening_data,
     if not gamma_point(kptij_lst) and bvk_kmesh is not None:
         cfunc_prefix += "_bvk"
     fill = "%s_%s%s" % (cfunc_prefix, kk_type, aosym[:2])
+    if order == 'Lij':
+        fill += '_Lij'
     drv = getattr(libpbc, "%s_%s_drv"%(cfunc_prefix,kk_type))
 
     log.debug("Using %s to evaluate SR integrals", fill)

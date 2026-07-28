@@ -79,6 +79,7 @@ class RSGDF(GDF):
         'use_bvk', 'precision_R', 'precision_G', 'npw_max', '_omega_min',
         'omega', 'ke_cutoff', 'mesh_compact', 'omega_j2c', 'mesh_j2c',
         'precision_j2c', 'j2c_eig_always', 'kpts',
+        'direct', 'semidirect', 'ksym',
     }
 
     def weighted_coulG(self, kpt=np.zeros(3), exx=False, mesh=None, omega=None):
@@ -89,6 +90,11 @@ class RSGDF(GDF):
             raise NotImplementedError("""
 RSGDF for low-dimensional systems are not available yet. We recommend using
 cell.dimension=3 with large vacuum.""")
+
+        # Compute three-center integrals on demand instead of storing CDERIs.
+        self.direct = False
+        self.semidirect = False
+        self.ksym = 's2'
 
         # if True and kpts are gamma-inclusive, RSDF will use the bvk cell
         # trick for computing both j3c_SR and j3c_LR. If kpts are not
@@ -144,6 +150,9 @@ cell.dimension=3 with large vacuum.""")
         log.info('******** %s ********', self.__class__)
         log.info('cell num shells = %d, num cGTOs = %d, num pGTOs = %d',
                  cell.nbas, cell.nao_nr(), cell.npgto_nr())
+        log.info('direct = %s', self.direct)
+        log.info('semidirect = %s', self.semidirect)
+        log.info('ksym = %s', self.ksym)
         log.info('use_bvk = %s', self.use_bvk)
         log.info('precision_R = %s', self.precision_R)
         log.info('precision_G = %s', self.precision_G)
@@ -311,10 +320,60 @@ cell.dimension=3 with large vacuum.""")
         self.check_sanity()
         self.dump_flags()
 
-        # do normal gdf build with the modified _make_j3c
-        self._gdf_build(j_only=j_only, with_j3c=with_j3c)
+        # Integral-direct calculations do not build or store three-center
+        # density-fitting integrals.
+        if not self.direct:
+            self._gdf_build(j_only=j_only, with_j3c=with_j3c)
 
         return self
+
+    def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
+               with_j=True, with_k=True, omega=None, exxdiv=None):
+        if not self.direct or omega is not None:
+            return GDF.get_jk(
+                self, dm, hermi=hermi, kpts=kpts, kpts_band=kpts_band,
+                with_j=with_j, with_k=with_k, omega=omega, exxdiv=exxdiv)
+
+        from pyscf.pbc.df import rsdf_direct_jk
+        from pyscf.pbc.df.rsdf_direct_helper import kpts_to_kmesh
+
+        if kpts is None:
+            if np.all(self.kpts == 0):
+                kpts = np.zeros(3)
+            else:
+                kpts = self.kpts
+        kpts = np.asarray(kpts)
+
+        if isinstance(self.use_bvk, (bool, np.bool_)):
+            use_bvk_r = use_bvk_g = self.use_bvk
+        else:
+            use_bvk_r, use_bvk_g = self.use_bvk
+        if use_bvk_r or use_bvk_g:
+            bvk_kmesh0 = kpts_to_kmesh(self.cell, kpts)
+            bvk_kmesh = [
+                bvk_kmesh0 if use_bvk_r else None,
+                bvk_kmesh0 if use_bvk_g else None,
+            ]
+        else:
+            bvk_kmesh = None
+
+        if kpts.shape == (3,):
+            bvk_kmesh_band = None if kpts_band is None else bvk_kmesh
+            return rsdf_direct_jk.get_jk(
+                self, dm, hermi, kpts, kpts_band, exxdiv, with_j, with_k,
+                bvk_kmesh_band, self.semidirect)
+
+        vj = vk = None
+        if with_k:
+            vk = rsdf_direct_jk.get_k_kpts(
+                self, dm, hermi, kpts, kpts_band, exxdiv,
+                bvk_kmesh=bvk_kmesh, semidirect=self.semidirect,
+                ksym=self.ksym)
+        if with_j:
+            vj = rsdf_direct_jk.get_j_kpts(
+                self, dm, hermi, kpts, kpts_band,
+                bvk_kmesh=bvk_kmesh)
+        return vj, vk
 
 
 RSDF = RSGDF

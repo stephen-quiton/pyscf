@@ -800,11 +800,16 @@ class KMP2(mp2.MP2):
 
     to_gpu = lib.to_gpu
 
-KRMP2 = KMP2
+def KRMP2(mf, frozen=None, mo_coeff=None, mo_occ=None):
+    if getattr(mf.with_df, 'direct', False):
+        from pyscf.pbc.mp import kmp2_direct
+        return kmp2_direct.KRMP2_direct(
+            mf, frozen=frozen, mo_coeff=mo_coeff, mo_occ=mo_occ)
+    return KMP2(mf, frozen=frozen, mo_coeff=mo_coeff, mo_occ=mo_occ)
 
 
 from pyscf.pbc import scf
-scf.khf.KRHF.MP2 = lib.class_as_method(KRMP2)
+scf.khf.KRHF.MP2 = KRMP2
 scf.kghf.KGHF.MP2 = None
 scf.krohf.KROHF.MP2 = None
 

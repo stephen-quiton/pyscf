@@ -34,6 +34,13 @@ def GMP2(mf, frozen=None, mo_coeff=None, mo_occ=None):
     return mp2.GMP2(mf, frozen, mo_coeff, mo_occ)
 
 def KRMP2(mf, frozen=None, mo_coeff=None, mo_occ=None):
+    if getattr(mf.with_df, 'direct', False):
+        if isinstance(mf.kpts, libkpts.KPoints):
+            raise NotImplementedError(
+                'Integral-direct RSDF MP2 does not support symmetry-adapted '
+                'KPoints objects')
+        from pyscf.pbc.mp import kmp2_direct
+        return kmp2_direct.KRMP2_direct(mf, frozen, mo_coeff, mo_occ)
     if isinstance(mf.kpts, libkpts.KPoints):
         return kmp2_ksymm.KRMP2(mf, frozen, mo_coeff, mo_occ)
     else:
