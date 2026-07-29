@@ -497,7 +497,10 @@ def add_j3c_lr_q_(mydf, j3c, kpt, adapted_kptjs, adapted_ji_idx,
     else:
         aosym_ = 's1'
 
-    ncol = nii if aosym_ == 's2' else nij
+    # Keep allocation-size arithmetic in Python integers.  Depending on the
+    # integer dtypes returned by the shell/grid bookkeeping, NumPy scalar
+    # multiplication can overflow before np.empty sees the requested size.
+    ncol = int(nii if aosym_ == 's2' else nij)
 
 # check j3c dtype and shape
     if j3c.dtype == np.double and not (is_zero(kpt) and is_zero(adapted_kptjs)):
@@ -542,11 +545,13 @@ def add_j3c_lr_q_(mydf, j3c, kpt, adapted_kptjs, adapted_ji_idx,
         kLpqIbuf = np.zeros((nkptj,*j3c_shape), dtype=np.double)
     # (pq|G;{kj}) + (pq|G) ==> ncol*(nkptj+1)*Gblksize
     mem_avail = mydf.max_memory - lib.current_memory()[0]
-    Gblksize = max(16, int(np.floor(mem_avail*0.4 / (ncol*(nkptj+1)*16/1e6))))
-    Gblksize = min(Gblksize, ngrids, 16384)
-    pqgRbuf = np.empty(Gblksize*ncol, dtype=np.double)
-    pqgIbuf = np.empty(Gblksize*ncol, dtype=np.double)
-    buf = np.empty(nkptj*Gblksize*ncol, dtype=np.complex128)
+    Gblksize = max(16, int(np.floor(mem_avail*0.3 / (ncol*(nkptj+1)*16/1e6))))
+    Gblksize = int(min(Gblksize, ngrids, 16384))
+    pqg_size = Gblksize * ncol
+    buf_size = nkptj * pqg_size
+    pqgRbuf = np.empty(pqg_size, dtype=np.double)
+    pqgIbuf = np.empty(pqg_size, dtype=np.double)
+    buf = np.empty(buf_size, dtype=np.complex128)
     for p0, p1 in lib.prange(0, ngrids, Gblksize):
         # shape: nkptj, nG, ncol
         dat = ft_ao.ft_aopair_kpts(cell, Gv[p0:p1], shls_slice[:4], aosym_,

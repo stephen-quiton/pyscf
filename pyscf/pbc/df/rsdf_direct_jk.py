@@ -81,7 +81,7 @@ def get_j_kpts(mydf, dm_kpts, hermi=1, kpts=np.zeros((1,3)), kpts_band=None,
     j3c_real = j3c_dtype == REAL
     mem_avail = mydf.max_memory - lib.current_memory()[0]
     log.debug1('get_j_kpts pass1 mem_avail= %.1f MB', mem_avail)
-    blksize = min(nao*nao, mem_avail*0.7e6 / (2*nkpts*naux*j3c_dsize))
+    blksize = min(nao*nao, mem_avail*0.6e6 / (2*nkpts*naux*j3c_dsize))
     shranges = _guess_shell_ranges(mydf.cell, blksize, 's1')
     log.debug1('get_j_kpts pass1 blksize= %s  shranges= %s', blksize, shranges)
     blksize = np.max([x[2] for x in shranges])
