@@ -1452,6 +1452,67 @@ static void sort3c_kks1(double complex *out, double *bufr, double *bufi,
         out += nijk * comp;
     }
 }
+static void sort3c_kks1_Lij(double complex *out, double *bufr, double *bufi,
+                            int *kptij_idx, int *shls_slice, int *ao_loc,
+                            int nkpts, int nkpts_ij, int comp, int ish, int jsh,
+                            int msh0, int msh1)
+{
+    const int ish0 = shls_slice[0];
+    const int ish1 = shls_slice[1];
+    const int jsh0 = shls_slice[2];
+    const int jsh1 = shls_slice[3];
+    const int ksh0 = shls_slice[4];
+    const int ksh1 = shls_slice[5];
+    const size_t naoi = ao_loc[ish1] - ao_loc[ish0];
+    const size_t naoj = ao_loc[jsh1] - ao_loc[jsh0];
+    const size_t naok = ao_loc[ksh1] - ao_loc[ksh0];
+    const size_t njk = naoj * naok;
+    const size_t nijk = njk * naoi;
+    const size_t nij = naoi * naoj;
+
+    const int di = ao_loc[ish+1] - ao_loc[ish];
+    const int dj = ao_loc[jsh+1] - ao_loc[jsh];
+    const int ip = ao_loc[ish] - ao_loc[ish0];
+    const int jp = ao_loc[jsh] - ao_loc[jsh0];
+    const int dij = di * dj;
+    const int dkmax = ao_loc[msh1] - ao_loc[msh0];
+    const size_t dijmc = dij * dkmax * comp;
+    out += ip * naoj + jp;
+
+    int i, j, k, kk, ik, jk, ksh, ic, dk, dijk;
+    size_t off;
+    double *pbr, *pbi;
+    double complex *pout;
+
+    for (kk = 0; kk < nkpts_ij; kk++) {
+        ik = kptij_idx[kk] / nkpts;
+        jk = kptij_idx[kk] % nkpts;
+        off = (ik*nkpts+jk) * dijmc;
+
+        for (ksh = msh0; ksh < msh1; ksh++) {
+            dk = ao_loc[ksh+1] - ao_loc[ksh];
+            dijk = dij * dk;
+            for (ic = 0; ic < comp; ic++) {
+                pout = out + nijk*ic + (ao_loc[ksh]-ao_loc[ksh0])*nij;
+                pbr = bufr + off + dijk*ic;
+                pbi = bufi + off + dijk*ic;
+                for (k = 0; k < dk; k++) {
+                    for (i = 0; i < di; i++) {
+                        for (j = 0; j < dj; j++) {
+                            pout[i*naoj+j] = pbr[j*di+i] +
+                                            pbi[j*di+i]*_Complex_I;
+                        }
+                    }
+                    pout += nij;
+                    pbr += dij;
+                    pbi += dij;
+                }
+            }
+            off += dijk * comp;
+        }
+        out += nijk * comp;
+    }
+}
 static void sort3c_kks2_igtj(double complex *out, double *bufr, double *bufi,
                              int *kptij_idx, int *shls_slice, int *ao_loc,
                              int nkpts, int nkpts_ij, int comp, int ish, int jsh,
@@ -1721,6 +1782,54 @@ void PBCsr3c_bvk_kks2(int (*intor)(), double complex *out, int nkpts_ij,
                      uniq_Rcut2s, uniqshlpr_dij_loc,
                      atm, natm, bas, nbas, env);
     }
+}
+void PBCsr3c_bvk_kks1(int (*intor)(), double complex *out, int nkpts_ij,
+                      int nkpts, int comp, int nimgs, int bvk_nimgs,
+                      int ish, int jsh, int *cell_loc_bvk,
+                      double *buf, double *env_loc, double *Ls,
+                      double *expkL_r, double *expkL_i, int *kptij_idx,
+                      int *shls_slice, int *ao_loc,
+                      CINTOpt *cintopt,
+                      int *refuniqshl_map, int *auxuniqshl_map,
+                      int nbasauxuniq, double *uniqexp,
+                      double *uniq_dcut2s, double dcut_binsize,
+                      double *uniq_Rcut2s, int *uniqshlpr_dij_loc,
+                      int *atm, int natm, int *bas, int nbas, double *env)
+{
+    _nr3c_bvk_kk(intor, &sort3c_kks1, out,
+                 nkpts_ij, nkpts, comp, nimgs, bvk_nimgs,
+                 ish, jsh, cell_loc_bvk,
+                 buf, env_loc, Ls, expkL_r, expkL_i, kptij_idx,
+                 shls_slice, ao_loc, cintopt,
+                 refuniqshl_map, auxuniqshl_map,
+                 nbasauxuniq, uniqexp,
+                 uniq_dcut2s, dcut_binsize,
+                 uniq_Rcut2s, uniqshlpr_dij_loc,
+                 atm, natm, bas, nbas, env);
+}
+void PBCsr3c_bvk_kks1_Lij(int (*intor)(), double complex *out, int nkpts_ij,
+                          int nkpts, int comp, int nimgs, int bvk_nimgs,
+                          int ish, int jsh, int *cell_loc_bvk,
+                          double *buf, double *env_loc, double *Ls,
+                          double *expkL_r, double *expkL_i, int *kptij_idx,
+                          int *shls_slice, int *ao_loc,
+                          CINTOpt *cintopt,
+                          int *refuniqshl_map, int *auxuniqshl_map,
+                          int nbasauxuniq, double *uniqexp,
+                          double *uniq_dcut2s, double dcut_binsize,
+                          double *uniq_Rcut2s, int *uniqshlpr_dij_loc,
+                          int *atm, int natm, int *bas, int nbas, double *env)
+{
+    _nr3c_bvk_kk(intor, &sort3c_kks1_Lij, out,
+                 nkpts_ij, nkpts, comp, nimgs, bvk_nimgs,
+                 ish, jsh, cell_loc_bvk,
+                 buf, env_loc, Ls, expkL_r, expkL_i, kptij_idx,
+                 shls_slice, ao_loc, cintopt,
+                 refuniqshl_map, auxuniqshl_map,
+                 nbasauxuniq, uniqexp,
+                 uniq_dcut2s, dcut_binsize,
+                 uniq_Rcut2s, uniqshlpr_dij_loc,
+                 atm, natm, bas, nbas, env);
 }
 void PBCsr3c_bvk_kk_drv(int (*intor)(), void (*fill)(), double *out,
                         int nkpts_ij, int nkpts,
