@@ -1015,6 +1015,10 @@ class KMP2_direct(mp2.MP2):
     def __init__(self, mf, frozen=None, mo_coeff=None, mo_occ=None):
 
         # >>>> sanity check
+        if getattr(getattr(mf, 'with_df', None), 'supports_post_hf', True) is False:
+            raise RuntimeError(
+                'sTC density fitting is HF-exchange-only; attach a separate '
+                'ordinary RSDF object before constructing direct KMP2')
         if not hasattr(mf, 'with_df'):
             raise RuntimeError('mf must have with_df')
         if not isinstance(mf.with_df, df.RSDF):

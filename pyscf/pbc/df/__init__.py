@@ -23,6 +23,8 @@ from .rsdf import RSDF, RSGDF
 from .mdf import MDF
 from .aft import AFTDF
 from .fft import FFTDF
+from .rsdf_stc import RSGDF_STC, RSDF_STC
+from .fft_stc import FFTDF_STC
 from pyscf.df.addons import aug_etb
 from .incore import make_auxcell
 

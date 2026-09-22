@@ -709,6 +709,11 @@ class KMP2(mp2.MP2):
 
     def __init__(self, mf, frozen=None, mo_coeff=None, mo_occ=None):
 
+        if getattr(getattr(mf, 'with_df', None), 'supports_post_hf', True) is False:
+            raise RuntimeError(
+                'sTC density fitting is HF-exchange-only; attach a separate '
+                'ordinary GDF/RSDF object before constructing KMP2')
+
         if mo_coeff is None: mo_coeff = mf.mo_coeff
         if mo_occ is None: mo_occ = mf.mo_occ
 

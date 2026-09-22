@@ -272,7 +272,11 @@ def get_k_kpts(mydf, dm_kpts, hermi=1, kpts=np.zeros((1,3)), kpts_band=None,
             # differ from _ewald_exxdiv_for_G0 due to discretization errors in
             # the FFT-based density (especially when the mesh is not
             # sufficiently dense), which can lead to small discrepancies.
-            coulG = tools.get_coulG(cell, kpt2-kpt1, exxdiv, mydf, mesh)
+            get_coulG = getattr(mydf, '_get_exchange_coulG', None)
+            if get_coulG is None:
+                coulG = tools.get_coulG(cell, kpt2-kpt1, exxdiv, mydf, mesh)
+            else:
+                coulG = get_coulG(kpt2-kpt1, mesh)
             if is_zero(kpt1-kpt2):
                 expmikr = np.array(1.)
             else:
