@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pkgutil
+__path__ = pkgutil.extend_path(__path__, __name__)
+
 from pyscf.pbc import scf
 from pyscf.pbc.mp import mp2
 from pyscf.pbc.mp import kmp2
@@ -47,3 +50,19 @@ def KRMP2(mf, frozen=None, mo_coeff=None, mo_occ=None):
         return kmp2.KRMP2(mf, frozen, mo_coeff, mo_occ)
 
 KMP2 = KRMP2
+
+
+def RMP3(mf, frozen=None, mo_coeff=None, mo_occ=None):
+    """Create a canonical Gamma-point periodic restricted MP3 solver."""
+    from pyscf.pbc.mp.mp3 import RMP3 as _RMP3
+    return _RMP3(mf, frozen, mo_coeff, mo_occ)
+
+MP3 = RMP3
+
+
+def KRMP3(mf, frozen=None, mo_coeff=None, mo_occ=None):
+    """Create a canonical k-point restricted MP3 solver."""
+    from pyscf.pbc.mp.kmp3 import KRMP3 as _KRMP3
+    return _KRMP3(mf, frozen, mo_coeff, mo_occ)
+
+KMP3 = KRMP3

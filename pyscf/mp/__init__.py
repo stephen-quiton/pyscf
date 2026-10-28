@@ -17,6 +17,9 @@ Moller-Plesset perturbation theory
 '''
 
 from pyscf import scf
+import pkgutil
+__path__ = pkgutil.extend_path(__path__, __name__)
+
 from pyscf.mp import mp2
 from pyscf.mp import dfmp2
 from pyscf.mp import ump2
@@ -75,3 +78,11 @@ def GMP2(mf, frozen=None, mo_coeff=None, mo_occ=None):
     else:
         return gmp2.GMP2(mf, frozen, mo_coeff, mo_occ)
 GMP2.__doc__ = gmp2.GMP2.__doc__
+
+
+def RMP3(mf, frozen=None, mo_coeff=None, mo_occ=None):
+    """Create a canonical restricted molecular MP3 solver."""
+    from pyscf.mp.mp3 import RMP3 as _RMP3
+    return _RMP3(mf, frozen, mo_coeff, mo_occ)
+
+MP3 = RMP3

@@ -183,8 +183,8 @@ def get_j2c_lr(mydf, auxcell=None, kpts=None, omega=None, mesh=None, out=None,
                 j2c[k] += lib.ddot(LkR*coulG_lr[p0:p1], LkR.T)
                 j2c[k] += lib.ddot(LkI*coulG_lr[p0:p1], LkI.T)
             else:
-                j2cR, j2cI = df.df_jk.zdotCN(LkR*coulG_lr[p0:p1],
-                                             LkI*coulG_lr[p0:p1], LkR.T, LkI.T)
+                j2cR, j2cI = lib.zdotCN(LkR*coulG_lr[p0:p1],
+                                       LkI*coulG_lr[p0:p1], LkR.T, LkI.T)
                 j2c[k] += j2cR + j2cI * 1j
 
             LkR = LkI = None
