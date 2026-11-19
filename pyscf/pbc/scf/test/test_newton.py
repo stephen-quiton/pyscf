@@ -18,10 +18,13 @@
 
 import unittest
 import numpy
+import scipy.linalg
 from pyscf import lib
+from pyscf.scf import hf
 from pyscf.pbc import gto
 from pyscf.pbc import scf
 from pyscf.pbc import dft
+from pyscf.pbc.scf import newton_ah
 
 def setUpModule():
     global cell
@@ -140,6 +143,44 @@ class KnowValues(unittest.TestCase):
         mf.kernel()
         self.assertAlmostEqual(mf.e_tot, -10.5309059210831, 7)
 
+    def test_krohf_hop_finite_difference(self):
+        cell1 = cell.copy()
+        cell1.spin = 2
+        cell1.mesh = [9]*3
+        kpts = cell1.make_kpts([2,1,1], scaled_center=[0.13,0.07,0.03])
+        mf = scf.KROHF(cell1, kpts, exxdiv=None)
+        rng = numpy.random.default_rng(12)
+        nao = cell1.nao
+        a = rng.normal(size=(2,nao,nao)) + 1j*rng.normal(size=(2,nao,nao))
+        _, coeff = mf.eig(a + a.conj().transpose(0,2,1), mf.get_ovlp())
+        occ = numpy.array([[2,2,2,1,1,0,0,0], [2,2,2,2,0,0,0,0]])
+        fock = mf.get_fock(s1e=mf.get_ovlp(), dm=mf.make_rdm1(coeff, occ))
+        g, hop, _ = newton_ah.gen_g_hop_rohf(mf, coeff, occ, fock)
+        x = rng.normal(size=g.size) + 1j*rng.normal(size=g.size)
+        x /= numpy.linalg.norm(x)
+        y = rng.normal(size=g.size) + 1j*rng.normal(size=g.size)
+        y /= numpy.linalg.norm(y)
+        kx, ky = [], []
+        p0 = 0
+        for o in occ:
+            p1 = p0 + numpy.count_nonzero(hf.uniq_var_indices(o))
+            kx.append(hf.unpack_uniq_var(x[p0:p1], o))
+            ky.append(hf.unpack_uniq_var(y[p0:p1], o))
+            p0 = p1
+
+        def energy(s, t):
+            c = [coeff[k].dot(scipy.linalg.expm(s * kx[k] + t * ky[k]))
+                 for k in range(len(kpts))]
+            return mf.energy_tot(dm=mf.make_rdm1(c, occ))
+
+        eps = 1e-4
+        fd = (energy(eps, eps) - energy(eps, -eps)
+              - energy(-eps, eps) + energy(-eps, -eps)) / (4 * eps**2)
+        hx, hy = hop(x), hop(y)
+        self.assertAlmostEqual(numpy.vdot(x, hy).real, numpy.vdot(y, hx).real, 10)
+        # The energy is averaged over k-points; g and h_op are not.
+        self.assertAlmostEqual(fd * len(kpts) / 2, numpy.vdot(x, hy).real, 5)
+
     def test_nr_krks_lda(self):
         mf = dft.KRKS(cell, cell.make_kpts([2,1,1]))
         mf.xc = 'lda,'
@@ -156,7 +197,7 @@ class KnowValues(unittest.TestCase):
         mf.kernel()
         self.assertAlmostEqual(mf.e_tot, -10.307756038726733, 8)
 
-    def test_nr_krks_gga(self):
+    def test_nr_krks_gga_high_cost(self):
         mf = dft.KRKS(cell, cell.make_kpts([2,1,1]))
         mf.xc = 'b88,'
         mf = scf.newton(mf)
@@ -164,7 +205,7 @@ class KnowValues(unittest.TestCase):
         mf.kernel()
         self.assertAlmostEqual(mf.e_tot, -10.446717855794008, 8)
 
-    def test_nr_kuks_gga(self):
+    def test_nr_kuks_gga_high_cost(self):
         mf = dft.KUKS(cell, cell.make_kpts([2,1,1]))
         mf.xc = 'b88,'
         mf = scf.newton(mf)
@@ -172,7 +213,7 @@ class KnowValues(unittest.TestCase):
         mf.kernel()
         self.assertAlmostEqual(mf.e_tot, -10.446717855794008, 8)
 
-    def test_nr_krks_rsh(self):
+    def test_nr_krks_rsh_high_cost(self):
         mf = dft.KRKS(cell, cell.make_kpts([2,1,1]))
         mf.xc = 'camb3lyp'
         mf = mf.newton()
@@ -210,7 +251,7 @@ class KnowValues(unittest.TestCase):
         g, hop, hdiag = mf.gen_g_hop(mo, mo_occ, [mf.get_hcore()]*2)
         self.assertAlmostEqual(numpy.linalg.norm(hop(dm1)), 28.01954683540594, 6)
 
-    def test_exxdiv_treatment_newton(self):
+    def test_exxdiv_treatment_newton_high_cost(self):
         mf_fo = scf.KRHF(cell, cell.make_kpts([2,1,1]))
         mf_fo.exxdiv = None
         mf_fo.conv_tol_grad = 1e-4

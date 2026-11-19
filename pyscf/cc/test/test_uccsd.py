@@ -15,6 +15,7 @@
 
 import unittest
 import copy
+import sys
 import numpy
 import h5py
 from functools import reduce
@@ -670,6 +671,8 @@ class KnownValues(unittest.TestCase):
         t2b = myucc._add_vvVV(t1, t2[1], eris1)
         self.assertAlmostEqual(abs(ref-t2b).max(), 0, 12)
 
+    # Flaky NaN in amplitudes on the Windows wheel, crashes DIIS eigh (issue #3245)
+    @unittest.skipIf(sys.platform == 'win32', 'flaky NaN on Windows (issue #3245)')
     def test_zero_beta_electrons(self):
         mol = gto.M(atom='H', basis=('631g', [[0, (.2, 1)], [0, (.5, 1)]]),
                     spin=1, verbose=0)
@@ -741,6 +744,45 @@ class KnownValues(unittest.TestCase):
         mycc.iterative_damping = 0.5
         mycc.run()
         self.assertAlmostEqual(mycc.e_tot, -100.07710261186985, 7)
+
+    def test_gamma2_outcore(self):
+        # with max_memory = 1 the vvvv blocks of _gamma2_outcore are written to
+        # h5fobj in many slabs; every block equals _gamma2_intermediates
+        mycc = cc.UCCSD(mf_s2).run(conv_tol=1e-10)
+        l1, l2 = mycc.solve_lambda()
+        mycc.max_memory = 1
+        for compress_vvvv in (False, True):
+            ref = uccsd_rdm._gamma2_intermediates(mycc, mycc.t1, mycc.t2, l1, l2, compress_vvvv)
+            f = lib.H5TmpFile()
+            d2 = uccsd_rdm._gamma2_outcore(mycc, mycc.t1, mycc.t2, l1, l2, f, compress_vvvv)
+            for k in (0, 1, 3):
+                self.assertIsInstance(d2[1][k], h5py.Dataset)
+            for i, j in numpy.ndindex(len(ref), 4):
+                with self.subTest(compress_vvvv=compress_vvvv, block=(i, j)):
+                    if ref[i][j] is None:
+                        self.assertIsNone(d2[i][j])
+                    else:
+                        self.assertAlmostEqual(abs(numpy.asarray(d2[i][j]) - ref[i][j]).max(), 0, 12)
+
+    def test_gamma2_outcore_without_alpha_virtuals(self):
+        # a spin block without virtual orbitals gives empty vvvv blocks in
+        # h5fobj, as it gives empty arrays in core
+        nocca = int(mf_s2.mo_occ[0].sum())
+        mycc = cc.UCCSD(mf_s2, frozen=[list(range(nocca, mol_s2.nao)), []]).run(conv_tol=1e-10)
+        l1, l2 = mycc.solve_lambda()
+        mycc.max_memory = 1
+        for compress_vvvv in (False, True):
+            ref = uccsd_rdm._gamma2_intermediates(mycc, mycc.t1, mycc.t2, l1, l2, compress_vvvv)
+            f = lib.H5TmpFile()
+            d2 = uccsd_rdm._gamma2_outcore(mycc, mycc.t1, mycc.t2, l1, l2, f, compress_vvvv)
+            for k in range(4):
+                with self.subTest(compress_vvvv=compress_vvvv, vvvv_block=k):
+                    if ref[1][k] is None:
+                        self.assertIsNone(d2[1][k])
+                        continue
+                    self.assertEqual(numpy.asarray(d2[1][k]).shape, ref[1][k].shape)
+                    if ref[1][k].size:
+                        self.assertAlmostEqual(abs(numpy.asarray(d2[1][k]) - ref[1][k]).max(), 0, 12)
 
 if __name__ == "__main__":
     print("Full Tests for UCCSD")

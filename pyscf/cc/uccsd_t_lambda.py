@@ -25,6 +25,7 @@ from pyscf import lib
 from pyscf.lib import logger
 from pyscf.cc import ccsd_lambda
 from pyscf.cc import uccsd_lambda
+from pyscf.cc import uccsd_t_blocked
 
 
 def kernel(mycc, eris=None, t1=None, t2=None, l1=None, l2=None,
@@ -43,6 +44,12 @@ def make_intermediates(mycc, t1, t2, eris):
                 - w.transpose(1,0,2,3,4,5))
 
     imds = uccsd_lambda.make_intermediates(mycc, t1, t2, eris)
+
+    blksize = uccsd_t_blocked.block_size(mycc, t2[1])
+    if blksize is not None:
+        (imds.l1a_t, imds.l1b_t, imds.l2aa_t, imds.l2ab_t,
+         imds.l2bb_t) = uccsd_t_blocked.lambda_intermediates(mycc, t1, t2, eris, blksize)
+        return imds
 
     t1a, t1b = t1
     t2aa, t2ab, t2bb = t2
@@ -170,45 +177,3 @@ def update_lambda(mycc, t1, t2, l1, l2, eris=None, imds=None):
     l2ab += imds.l2ab_t
     l2bb += imds.l2bb_t
     return (l1a, l1b), (l2aa, l2ab, l2bb)
-
-
-if __name__ == '__main__':
-    from pyscf import gto
-    from pyscf import scf
-    from pyscf import cc
-
-    mol = gto.Mole()
-    mol.atom = [
-        [8 , (0. , 0.     , 0.)],
-        [1 , (0. , -0.757 , 0.587)],
-        [1 , (0. , 0.757  , 0.587)]]
-    mol.basis = '631g'
-    mol.spin = 0
-    mol.build()
-    mf0 = mf = scf.RHF(mol).run(conv_tol=1)
-    mf = scf.addons.convert_to_uhf(mf)
-    mycc = cc.UCCSD(mf)
-    eris = mycc.ao2mo()
-
-    from pyscf.cc import ccsd_t_lambda_slow as ccsd_t_lambda
-    mycc0 = cc.CCSD(mf0)
-    eris0 = mycc0.ao2mo()
-    mycc0.kernel(eris=eris0)
-    t1 = mycc0.t1
-    t2 = mycc0.t2
-    imds = ccsd_t_lambda.make_intermediates(mycc0, t1, t2, eris0)
-    l1, l2 = ccsd_t_lambda.update_lambda(mycc0, t1, t2, t1, t2, eris0, imds)
-    l1ref, l2ref = ccsd_t_lambda.update_lambda(mycc0, t1, t2, l1, l2, eris0, imds)
-
-    t1 = (t1, t1)
-    t2aa = t2 - t2.transpose(1,0,2,3)
-    t2 = (t2aa, t2, t2aa)
-    l1 = (l1, l1)
-    l2aa = l2 - l2.transpose(1,0,2,3)
-    l2 = (l2aa, l2, l2aa)
-    imds = make_intermediates(mycc, t1, t2, eris)
-    l1, l2 = update_lambda(mycc, t1, t2, l1, l2, eris, imds)
-    print(abs(l2[1]-l2[1].transpose(1,0,2,3)-l2[0]).max())
-    print(abs(l2[1]-l2[1].transpose(0,1,3,2)-l2[2]).max())
-    print(abs(l1[0]-l1ref).max())
-    print(abs(l2[1]-l2ref).max())

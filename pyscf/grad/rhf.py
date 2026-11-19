@@ -265,7 +265,7 @@ def symmetrize(mol, de, atmlst=None):
     a_id = pmol.irrep_id.index(0)
     c = pmol.symm_orb[a_id].reshape(mol.natm, 3, -1)
     if atmlst is not None:
-        c = c[:,atmlst,:]
+        c = c[atmlst]
     tmp = numpy.einsum('zx,zxi->i', de, c)
     proj_de = numpy.einsum('i,zxi->zx', tmp, c)
     return proj_de
@@ -460,6 +460,8 @@ class GradientsBase(lib.StreamObject):
             self.de = self.symmetrize(self.de, atmlst)
         if self.base.do_disp():
             self.de += self.get_dispersion()
+        if self.base.do_gcp():
+            self.de += self.get_gcp()
         logger.timer(self, 'SCF gradients', *cput0)
         self._finalize()
         return self.de
