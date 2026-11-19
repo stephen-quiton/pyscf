@@ -1,0 +1,37 @@
+/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf_direct_helper.py:549: RuntimeWarning: overflow encountered in scalar multiply
+  buf = np.empty(nkptj*Gblksize*ncol, dtype=np.complex128)
+Traceback (most recent call last):
+  File "/global/home/users/stephenquiton/x23/mp2ss_laplace_ccpvtz_rsdfid/ammonia/../mp2ss-vary-nk.py", line 254, in <module>
+    e1 = kmf.kernel()
+         ^^^^^^^^^^^^
+  File "<string>", line 2, in kernel
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/scf/hf.py", line 2099, in scf
+    kernel(self, self.conv_tol, self.conv_tol_grad,
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/scf/hf.py", line 132, in kernel
+    vhf = mf.get_veff(mol, dm)
+          ^^^^^^^^^^^^^^^^^^^^
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/scf/khf.py", line 656, in get_veff
+    vj, vk = self.get_jk(cell, dm_kpts, hermi, kpts, kpts_band)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/scf/khf.py", line 644, in get_jk
+    vj, vk = self.with_df.get_jk(dm_kpts, hermi, kpts, kpts_band,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf.py", line 373, in get_jk
+    vj = rsdf_direct_jk.get_j_kpts(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf_direct_jk.py", line 91, in get_j_kpts
+    for kcpqL in loop_j3c(mydf, kptij_lst=kptii_lst, aosym='s1', partition_iorj='i',
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf_direct_helper.py", line 817, in loop_j3c
+    j3c = get_j3c(mydf, kptij_lst=kptij_lst, shls_slice=shls_slice, aosym=aosym,
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf_direct_helper.py", line 652, in get_j3c
+    add_j3c_lr_(mydf, j3c, cell=cell, auxcell=auxcell, kptij_lst=kptij_lst,
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf_direct_helper.py", line 614, in add_j3c_lr_
+    add_j3c_lr_q_(mydf, j3c, kpt, adapted_kptjs, adapted_ji_idx,
+  File "/global/home/users/stephenquiton/home_dev/pyscf-master-home/pyscf/pbc/df/rsdf_direct_helper.py", line 549, in add_j3c_lr_q_
+    buf = np.empty(nkptj*Gblksize*ncol, dtype=np.complex128)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: negative dimensions are not allowed
+/global/home/users/stephenquiton/home_conda_envs/fsec-312/lib/python3.12/site-packages/numpy/__config__.py:155: UserWarning: Install `pyyaml` for better output
+  warnings.warn("Install `pyyaml` for better output", stacklevel=1)
