@@ -114,7 +114,8 @@ def kernel(method, assert_convergence=ASSERT_CONV,
     else:
         raise NotImplementedError('Nuclear gradients of %s not available' % method)
     if not include_ghost:
-        g_scanner.atmlst = numpy.where(method.mol.atom_charges() != 0)[0]
+        atmlst = numpy.where(method.mol.atom_charges() != 0)[0]
+        g_scanner.atmlst = atmlst
 
     # When symmetry is enabled, the molecule may be shifted or rotated to make
     # the z-axis be the main axis. The transformation can cause inconsistency
@@ -134,10 +135,24 @@ def kernel(method, assert_convergence=ASSERT_CONV,
     for cycle, geom in enumerate(optimizer):
         if log.verbose >= lib.logger.NOTE:
             log.note('\nGeometry optimization cycle %d', cycle+1)
-            dump_mol_geometry(mol, geom.coords, log)
+            if include_ghost:
+                dump_coords = geom.coords
+            else:
+                # geom.coords contains the non-ghost atoms only. Fill in the
+                # fixed ghost coordinates (in Angstrom) so that the dump can
+                # be compared against the full molecule.
+                dump_coords = mol.atom_coords() * lib.param.BOHR
+                dump_coords[atmlst] = geom.coords
+            dump_mol_geometry(mol, dump_coords, log)
 
         if mol.symmetry:
-            geom.coords = symmetrize(mol, geom.coords)
+            if include_ghost:
+                geom.coords = symmetrize(mol, geom.coords)
+            else:
+                # symmetrize() works on the full molecule; map the reduced
+                # coordinates back to the non-ghost atoms afterwards.
+                coords = symmetrize(mol, _geom_to_atom(mol, geom, include_ghost))
+                geom.coords = coords[atmlst] / lib.param.BOHR
 
         mol.set_geom_(_geom_to_atom(mol, geom, include_ghost), unit='Bohr')
         energy, gradients = g_scanner(mol)
@@ -205,42 +220,3 @@ class GeometryOptimizer(lib.StreamObject):
     optimize = kernel
 
 del (INCLUDE_GHOST, ASSERT_CONV)
-
-
-if __name__ == '__main__':
-    from pyscf import gto
-    from pyscf import scf, dft, cc, mp
-    mol = gto.M(atom='''
-C       1.1879  -0.3829 0.0000
-C       0.0000  0.5526  0.0000
-O       -1.1867 -0.2472 0.0000
-H       -1.9237 0.3850  0.0000
-H       2.0985  0.2306  0.0000
-H       1.1184  -1.0093 0.8869
-H       1.1184  -1.0093 -0.8869
-H       -0.0227 1.1812  0.8852
-H       -0.0227 1.1812  -0.8852
-                ''',
-                basis='3-21g')
-
-    mf = scf.RHF(mol)
-    conv_params = {
-        'gradientmax': 6e-3,  # Eh/Bohr
-        'gradientrms': 2e-3,  # Eh/Bohr
-        'stepmax': 2e-2,      # Bohr
-        'steprms': 1.5e-2,    # Bohr
-    }
-    mol1 = optimize(mf, **conv_params)
-    print(mf.kernel() - -153.219208484874)
-    print(scf.RHF(mol1).kernel() - -153.222680852335)
-
-    mf = dft.RKS(mol)
-    mf.xc = 'pbe,'
-    mf.conv_tol = 1e-7
-    mol1 = optimize(mf)
-
-    mymp2 = mp.MP2(scf.RHF(mol))
-    mol1 = optimize(mymp2)
-
-    mycc = cc.CCSD(scf.RHF(mol))
-    mol1 = optimize(mycc)

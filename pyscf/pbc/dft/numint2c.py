@@ -35,9 +35,11 @@ class NumInt2C(lib.StreamObject, numint.LibXCMixin):
     '''Numerical integration methods for 2-component basis (used by GKS)'''
     collinear         = numint2c.NumInt2C.collinear
     spin_samples      = numint2c.NumInt2C.spin_samples
+    # Retain these deprecated attributes for backward compatibility.
     collinear_thrd    = numint2c.NumInt2C.collinear_thrd
     collinear_samples = numint2c.NumInt2C.collinear_samples
 
+    reset = pnumint.NumInt.reset
     make_mask = lib.invalid_method('make_mask')
     eval_ao = staticmethod(pnumint.eval_ao)
     eval_rho = staticmethod(numint2c.eval_rho)
@@ -85,7 +87,7 @@ class NumInt2C(lib.StreamObject, numint.LibXCMixin):
             dm_a = dm[:nao,:nao].copy('C')
             dm_b = dm[nao:,nao:].copy('C')
             ni = self._to_numint1c()
-            with_lapl = True
+            with_lapl = False  # Only first AO derivatives are available for MGGA.
             hermi = 1
             rhoa = []
             rhob = []
@@ -136,7 +138,7 @@ class NumInt2C(lib.StreamObject, numint.LibXCMixin):
             dm_a = dm[:nao,:nao].copy('C')
             dm_b = dm[nao:,nao:].copy('C')
             ni = self._to_numint1c()
-            with_lapl = True
+            with_lapl = False  # Only first AO derivatives are available for MGGA.
             rhoa = []
             rhob = []
             for ao_k1, ao_k2, mask, weight, coords \
@@ -320,6 +322,11 @@ class NumInt2C(lib.StreamObject, numint.LibXCMixin):
     block_loop = pnumint.NumInt.block_loop
     _gen_rho_evaluator = pnumint.NumInt._gen_rho_evaluator
 
+    def to_gpu(self):
+        from gpu4pyscf.pbc.dft.numint2c import NumInt2C
+        return NumInt2C().set(
+            omega=self.omega, collinear=self.collinear, spin_samples=self.spin_samples)
+
     def _to_numint1c(self):
         '''Converts to the associated class to handle collinear systems'''
         return self.view(pnumint.NumInt)
@@ -388,12 +395,14 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
         '''Compute the 0th order density, Vxc and fxc.  They can be used in TDDFT,
         DFT hessian module etc.
         '''
+        mo_coeff = mo_coeff_kpts
+        mo_occ = mo_occ_kpts
         if kpts is None:
             kpts = np.zeros((1,3))
         elif isinstance(kpts, KPoints):
-            kpts = kpts.kpts
             mo_coeff = kpts.transform_mo_coeff(mo_coeff_kpts)
             mo_occ = kpts.transform_mo_occ(mo_occ_kpts)
+            kpts = kpts.kpts
         xctype = self._xc_type(xc_code)
         if xctype in ('GGA', 'MGGA'):
             ao_deriv = 1
@@ -420,12 +429,12 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
         else:
             # rhoa and rhob must be real
             dm_a = [(mo[:nao]*occ).dot(mo[:nao].conj().T)
-                    for mo, occ in zip(mo_coeff_kpts, mo_occ_kpts)]
+                    for mo, occ in zip(mo_coeff, mo_occ)]
             dm_b = [(mo[nao:]*occ).dot(mo[nao:].conj().T)
-                    for mo, occ in zip(mo_coeff_kpts, mo_occ_kpts)]
+                    for mo, occ in zip(mo_coeff, mo_occ)]
             hermi = 1
             ni = self._to_numint1c()
-            with_lapl = True
+            with_lapl = False  # Only first AO derivatives are available for MGGA.
             hermi = 1
             rhoa = []
             rhob = []
@@ -453,7 +462,7 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
             ao_deriv = 1
         else:
             ao_deriv = 0
-        n2c = dm_kpts.shape[0]
+        n2c = dm_kpts.shape[-1]
         nao = n2c // 2
 
         if self.collinear[0] in ('m', 'n'):  # mcol or ncol
@@ -476,7 +485,7 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
             dm_a = dm_kpts[:,:nao,:nao].copy('C')
             dm_b = dm_kpts[:,nao:,nao:].copy('C')
             ni = self._to_numint1c()
-            with_lapl = True
+            with_lapl = False  # Only first AO derivatives are available for MGGA.
             rhoa = []
             rhob = []
             for ao_k1, ao_k2, mask, weight, coords \
@@ -552,6 +561,8 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
         else:
             raise NotImplementedError(f'KNUMINT2C.get_vxc for functional {xc_code}')
 
+        if hermi:
+            vmat = vmat + vmat.conj().transpose(0,1,3,2)
         if dms.ndim == 3:
             vmat = vmat[0]
             nelec = nelec[0]
@@ -603,6 +614,8 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
         else:
             raise NotImplementedError(f'numint2c.get_fxc for functional {xc_code}')
 
+        if hermi:
+            vmat = vmat + vmat.conj().transpose(0,1,3,2)
         if dms.ndim == 3:
             vmat = vmat[0]
         return vmat
@@ -636,6 +649,11 @@ class KNumInt2C(lib.StreamObject, numint.LibXCMixin):
     mcfun_eval_xc_adapter = numint2c.mcfun_eval_xc_adapter
     block_loop = pnumint.KNumInt.block_loop
     _gen_rho_evaluator = pnumint.KNumInt._gen_rho_evaluator
+
+    def to_gpu(self):
+        from gpu4pyscf.pbc.dft.numint2c import KNumInt2C
+        return KNumInt2C(self.kpts.copy()).set(
+            omega=self.omega, collinear=self.collinear, spin_samples=self.spin_samples)
 
     def _to_numint1c(self):
         '''Converts to the associated class to handle collinear systems'''

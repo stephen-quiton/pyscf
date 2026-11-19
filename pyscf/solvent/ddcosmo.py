@@ -857,6 +857,12 @@ class ddCOSMO(lib.StreamObject):
             'cached_pol': cached_pol,
         }
 
+    def solvation_type(self):
+        '''The solvation scheme this object implements. Models that support
+        only equilibrium solvation return 'default'.
+        '''
+        return 'default'
+
     def kernel(self, dm):
         '''A single shot solvent effects for given density matrix.
         '''
@@ -958,7 +964,7 @@ class ddCOSMO(lib.StreamObject):
 
     def grad(self, dm):
         '''Computes the Jacobian for the energy associated with the solvent,
-        including the derivatives of the solvent itsself and the interactions
+        including the derivatives of the solvent itself and the interactions
         between the solvent and the charge density of the solute.
         '''
         from pyscf.solvent.grad import ddcosmo_grad
@@ -979,55 +985,3 @@ class Grids(gen_grid.Grids):
     def build(self, mol=None, *args, **kwargs):
         assert self.alignment == 0
         return super().build(mol, with_non0tab=False, sort_grids=False)
-
-
-if __name__ == '__main__':
-    from pyscf import scf
-    from pyscf import mcscf
-    from pyscf import cc
-    mol = gto.M(atom='H 0 0 0; H 0 1 1.2; H 1. .1 0; H .5 .5 1')
-    natm = mol.natm
-    r_vdw = [radii.VDW[gto.charge(mol.atom_symbol(i))]
-             for i in range(natm)]
-    r_vdw = numpy.asarray(r_vdw)
-    pcmobj = DDCOSMO(mol)
-    pcmobj.regularize_xt = lambda t, eta, scale: regularize_xt(t, eta)
-    pcmobj.lebedev_order = 7
-    pcmobj.lmax = 6
-    pcmobj.eta = 0.1
-    nlm = (pcmobj.lmax+1)**2
-    coords_1sph, weights_1sph = make_grids_one_sphere(pcmobj.lebedev_order)
-    fi = make_fi(pcmobj, r_vdw)
-    ylm_1sph = numpy.vstack(sph.real_sph_vec(coords_1sph, pcmobj.lmax, True))
-    L = make_L(pcmobj, r_vdw, ylm_1sph, fi)
-    print(lib.fp(L) - 6.2823493771037473)
-
-    mol = gto.Mole()
-    mol.atom = ''' O                  0.00000000    0.00000000   -0.11081188
-                   H                 -0.00000000   -0.84695236    0.59109389
-                   H                 -0.00000000    0.89830571    0.52404783 '''
-    mol.basis = '3-21g' #cc-pvdz'
-    mol.build()
-    cm = DDCOSMO(mol)
-    cm.verbose = 4
-    mf = ddcosmo_for_scf(scf.RHF(mol), cm)#.newton()
-    mf.verbose = 4
-    print(mf.kernel() - -75.570364368059)
-    cm.verbose = 3
-    e = ddcosmo_for_casci(mcscf.CASCI(mf, 4, 4)).kernel()[0]
-    print(e - -75.5743583693215)
-    cc_cosmo = ddcosmo_for_post_scf(cc.CCSD(mf)).run()
-    print(cc_cosmo.e_tot - -75.70961637250134)
-
-    mol = gto.Mole()
-    mol.atom = ''' Fe                 0.00000000    0.00000000   -0.11081188
-                   H                 -0.00000000   -0.84695236    0.59109389
-                   H                 -0.00000000    0.89830571    0.52404783 '''
-    mol.basis = '3-21g' #cc-pvdz'
-    mol.build()
-    cm = DDCOSMO(mol)
-    cm.eps = -1
-    cm.verbose = 4
-    mf = ddcosmo_for_scf(scf.ROHF(mol), cm).newton()
-    mf.verbose=4
-    mf.kernel()

@@ -19,7 +19,9 @@
 
 import numpy
 from pyscf import lib
+from pyscf.lib import logger
 from pyscf import ao2mo
+from pyscf.cc import ccsd
 
 #einsum = numpy.einsum
 einsum = lib.einsum
@@ -81,8 +83,8 @@ def _gamma1_intermediates(cc, t1, t2, l1, l2):
 
     return ((dooa, doob), (dova, dovb), (dvoa, dvob), (dvva, dvvb))
 
-# gamma2 intermediates in Chemist's notation
-#TODO: hold d2 intermediates in h5fobj
+# gamma2 intermediates in Chemist's notation. With h5fobj, the vvvv blocks are
+# written to it (_gamma2_vvvv_outcore); the other blocks are held in memory.
 def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
     t1a, t1b = t1
     t2aa, t2ab, t2bb = t2
@@ -167,10 +169,6 @@ def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
     goOvV = goOvV.conj()
     gOOVV = gOOVV.conj()
 
-    gvvvv = einsum('ijab,ijcd->abcd', tauaa, l2aa) * .125
-    gvVvV = einsum('ijab,ijcd->abcd', tauab, l2ab) * .25
-    gVVVV = einsum('ijab,ijcd->abcd', taubb, l2bb) * .125
-
     goooo = einsum('ijab,klab->ijkl', l2aa, tauaa) * .125
     goOoO = einsum('ijab,klab->ijkl', l2ab, tauab) * .25
     gOOOO = einsum('ijab,klab->ijkl', l2bb, taubb) * .125
@@ -215,10 +213,11 @@ def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
     gOvVv = einsum('ja,jibc->iacb', .5  * l1a, tauab)
     gOVVV = einsum('ja,ijcb->iacb', .25 * l1b, taubb)
 
-    govvv += einsum('bcad,id->iabc', gvvvv, t1a)
-    goVvV -= einsum('bcda,id->iabc', gvVvV, t1a) * 2
-    gOvVv -= einsum('cbad,id->iabc', gvVvV, t1b) * 2
-    gOVVV += einsum('bcad,id->iabc', gVVVV, t1b)
+    # the vvvv intermediates contracted with t1, through l2*t1 (no vvvv array)
+    govvv += einsum('jkbc,jkai->iabc', tauaa, einsum('jkad,id->jkai', l2aa, t1a)) * .125
+    goVvV -= einsum('jKbc,jKai->iabc', tauab, einsum('jKda,id->jKai', l2ab, t1a)) * .5
+    gOvVv -= einsum('jKcb,jKai->iabc', tauab, einsum('jKad,id->jKai', l2ab, t1b)) * .5
+    gOVVV += einsum('jkbc,jkai->iabc', taubb, einsum('jkad,id->jkai', l2bb, t1b)) * .125
 
     tmpa  = numpy.einsum('kakb->ab', miajb) * .25
     tmpa += numpy.einsum('kakb->ab', mIaJb) * .25
@@ -264,33 +263,28 @@ def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
     gOvOv += einsum('kIaC,JC,kb->IbJa', l2ab, t1b, t1a)
 
     dovov = goovv.transpose(0,2,1,3) - goovv.transpose(0,3,1,2)
-    dvvvv = gvvvv.transpose(0,2,1,3) - gvvvv.transpose(0,3,1,2)
     doooo = goooo.transpose(0,2,1,3) - goooo.transpose(0,3,1,2)
     dovvv = govvv.transpose(0,2,1,3) - govvv.transpose(0,3,1,2)
     dooov = gooov.transpose(0,2,1,3) - gooov.transpose(1,2,0,3)
     dovvo = govvo.transpose(0,2,1,3)
     dovov =(dovov + dovov.transpose(2,3,0,1)) * .5
-    dvvvv = dvvvv + dvvvv.transpose(1,0,3,2).conj()
     doooo = doooo + doooo.transpose(1,0,3,2).conj()
     dovvo =(dovvo + dovvo.transpose(3,2,1,0).conj()) * .5
     doovv =-dovvo.transpose(0,3,2,1)
     dvvov = None
 
     dOVOV = gOOVV.transpose(0,2,1,3) - gOOVV.transpose(0,3,1,2)
-    dVVVV = gVVVV.transpose(0,2,1,3) - gVVVV.transpose(0,3,1,2)
     dOOOO = gOOOO.transpose(0,2,1,3) - gOOOO.transpose(0,3,1,2)
     dOVVV = gOVVV.transpose(0,2,1,3) - gOVVV.transpose(0,3,1,2)
     dOOOV = gOOOV.transpose(0,2,1,3) - gOOOV.transpose(1,2,0,3)
     dOVVO = gOVVO.transpose(0,2,1,3)
     dOVOV =(dOVOV + dOVOV.transpose(2,3,0,1)) * .5
-    dVVVV = dVVVV + dVVVV.transpose(1,0,3,2).conj()
     dOOOO = dOOOO + dOOOO.transpose(1,0,3,2).conj()
     dOVVO =(dOVVO + dOVVO.transpose(3,2,1,0).conj()) * .5
     dOOVV =-dOVVO.transpose(0,3,2,1)
     dVVOV = None
 
     dovOV = goOvV.transpose(0,2,1,3)
-    dvvVV = gvVvV.transpose(0,2,1,3) * 2
     dooOO = goOoO.transpose(0,2,1,3) * 2
     dovVV = goVvV.transpose(0,2,1,3)
     dooOV = goOoV.transpose(0,2,1,3)
@@ -302,7 +296,6 @@ def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
     dooVV = goVoV.transpose(0,2,1,3)
     dOOvv = gOvOv.transpose(0,2,1,3)
 
-    dvvVV = dvvVV + dvvVV.transpose(1,0,3,2).conj()
     dooOO = dooOO + dooOO.transpose(1,0,3,2).conj()
     dovVO = (dovVO + dOVvo.transpose(3,2,1,0).conj()) * .5
     dooVV =-(dooVV + dooVV.transpose(1,0,3,2).conj()) * .5
@@ -315,8 +308,36 @@ def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
     dOOvv =-(dOOvv + dOOvv.transpose(1,0,3,2).conj()) * .5
     dVVov = None
 
+    if h5fobj is None:
+        dvvvv, dvvVV, dVVVV = _gamma2_vvvv_incore(tauaa, tauab, taubb, l2aa, l2ab, l2bb,
+                                                  compress_vvvv)
+    else:
+        dvvvv, dvvVV, dVVVV = _gamma2_vvvv_outcore(cc, tauaa, tauab, taubb, l2aa, l2ab, l2bb,
+                                                   h5fobj, compress_vvvv)
+
+    return ((dovov, dovOV, dOVov, dOVOV),
+            (dvvvv, dvvVV, dVVvv, dVVVV),
+            (doooo, dooOO, dOOoo, dOOOO),
+            (doovv, dooVV, dOOvv, dOOVV),
+            (dovvo, dovVO, dOVvo, dOVVO),
+            (dvvov, dvvOV, dVVov, dVVOV),
+            (dovvv, dovVV, dOVvv, dOVVV),
+            (dooov, dooOV, dOOov, dOOOV))
+
+def _gamma2_vvvv_incore(tauaa, tauab, taubb, l2aa, l2ab, l2bb, compress_vvvv):
+    '''dvvvv, dvvVV and dVVVV of _gamma2_outcore, held in memory.'''
+    gvvvv = einsum('ijab,ijcd->abcd', tauaa, l2aa) * .125
+    gvVvV = einsum('ijab,ijcd->abcd', tauab, l2ab) * .25
+    gVVVV = einsum('ijab,ijcd->abcd', taubb, l2bb) * .125
+    dvvvv = gvvvv.transpose(0,2,1,3) - gvvvv.transpose(0,3,1,2)
+    dvvvv = dvvvv + dvvvv.transpose(1,0,3,2).conj()
+    dVVVV = gVVVV.transpose(0,2,1,3) - gVVVV.transpose(0,3,1,2)
+    dVVVV = dVVVV + dVVVV.transpose(1,0,3,2).conj()
+    dvvVV = gvVvV.transpose(0,2,1,3) * 2
+    dvvVV = dvvVV + dvvVV.transpose(1,0,3,2).conj()
+
     if compress_vvvv:
-        nocca, noccb, nvira, nvirb = t2ab.shape
+        nvira, nvirb = tauab.shape[2:]
         idxa = numpy.tril_indices(nvira)
         idxa = idxa[0] * nvira + idxa[1]
         idxb = numpy.tril_indices(nvirb)
@@ -330,15 +351,44 @@ def _gamma2_outcore(cc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
         dVVVV = dVVVV + dVVVV.transpose(1,0,2,3)
         dVVVV = lib.take_2d(dVVVV.reshape(nvirb**2,nvirb**2), idxb, idxb)
         dVVVV *= .5
+    return dvvvv, dvvVV, dVVVV
 
-    return ((dovov, dovOV, dOVov, dOVOV),
-            (dvvvv, dvvVV, dVVvv, dVVVV),
-            (doooo, dooOO, dOOoo, dOOOO),
-            (doovv, dooVV, dOOvv, dOOVV),
-            (dovvo, dovVO, dOVvo, dOVVO),
-            (dvvov, dvvOV, dVVov, dVVOV),
-            (dovvv, dovVV, dOVvv, dOVVV),
-            (dooov, dooOV, dOOov, dOOOV))
+def _gamma2_vvvv_outcore(cc, tauaa, tauab, taubb, l2aa, l2ab, l2bb, h5fobj, compress_vvvv):
+    '''dvvvv, dvvVV and dVVVV of _gamma2_outcore as datasets of h5fobj, formed
+    per block of their first index.'''
+    return (_vvvv_to_h5(cc, h5fobj, 'dvvvv', tauaa, l2aa - l2aa.transpose(0,1,3,2), .125, compress_vvvv),
+            _vvvv_to_h5(cc, h5fobj, 'dvvVV', tauab, l2ab, .5, compress_vvvv),
+            _vvvv_to_h5(cc, h5fobj, 'dVVVV', taubb, l2bb - l2bb.transpose(0,1,3,2), .125, compress_vvvv))
+
+def _vvvv_to_h5(cc, h5fobj, key, tau, lam, fac, compress_vvvv):
+    '''Write one vvvv block of _gamma2_vvvv_incore to h5fobj[key], one block of
+    its first index at a time.'''
+    log = logger.Logger(cc.stdout, cc.verbose)
+    nv1, nv2 = tau.shape[2:]
+    dtype = numpy.result_type(tau, lam)
+    if compress_vvvv:
+        idx2 = numpy.tril_indices(nv2)
+        idx2 = idx2[0] * nv2 + idx2[1]
+        dset = h5fobj.create_dataset(key, (nv1*(nv1+1)//2, nv2*(nv2+1)//2), dtype)
+    else:
+        dset = h5fobj.create_dataset(key, (nv1,nv1,nv2,nv2), dtype)
+    if nv1 == 0 or nv2 == 0:  # a spin block without virtual orbitals
+        return dset
+    max_memory = max(0, cc.max_memory - lib.current_memory()[0])
+    blksize = min(nv1, max(ccsd.BLKMIN, int(max_memory*.9e6/8/(3*nv1*nv2**2))))
+    log.debug1('%s in h5fobj: block size = %d, nvir = %d in %d blocks',
+               key, blksize, nv1, (nv1+blksize-1)//blksize)
+    for p0, p1 in lib.prange(0, nv1, blksize):
+        d1_pq = einsum('ijpr,ijqs->pqrs', tau[:,:,p0:p1], lam) * fac
+        d1_qp = einsum('ijqr,ijps->pqrs', tau, lam[:,:,p0:p1]) * fac
+        if compress_vvvv:
+            d3 = d1_pq + d1_qp
+            d3 = (d3 + d3.transpose(0,1,3,2).conj()) * .5
+            rows = numpy.hstack([(p-p0)*nv1 + numpy.arange(p+1) for p in range(p0, p1)])
+            dset[p0*(p0+1)//2:p1*(p1+1)//2] = lib.take_2d(d3.reshape((p1-p0)*nv1, nv2**2), rows, idx2)
+        else:
+            dset[p0:p1] = d1_pq + d1_qp.transpose(0,1,3,2).conj()
+    return dset
 
 def _gamma2_intermediates(cc, t1, t2, l1, l2, compress_vvvv=False):
     #TODO: h5fobj = lib.H5TmpFile()
@@ -627,81 +677,3 @@ def _make_rdm2(mycc, d1, d2, with_dm1=True, with_frozen=True, ao_repr=False):
 def _dm2ab_mo2ao(dm2, mo_a, mo_b):
     return lib.einsum('ijkl,pi,qj,rk,sl->pqrs', dm2, mo_a.conj(), mo_a,
                       mo_b.conj(), mo_b)
-
-
-if __name__ == '__main__':
-    from functools import reduce
-    from pyscf import gto
-    from pyscf import scf
-    from pyscf.cc import uccsd
-
-    mol = gto.Mole()
-    mol.atom = [
-        [8 , (0. , 0.     , 0.)],
-        [1 , (0. , -0.757 , 0.587)],
-        [1 , (0. , 0.757  , 0.587)]]
-    mol.basis = '631g'
-    mol.spin = 2
-    mol.build()
-    mf = scf.UHF(mol).run()
-
-    mycc = uccsd.UCCSD(mf)
-    mycc.frozen = 2
-    ecc, t1, t2 = mycc.kernel()
-    l1, l2 = mycc.solve_lambda()
-    dm1a,dm1b = make_rdm1(mycc, t1, t2, l1, l2)
-    dm2aa,dm2ab,dm2bb = make_rdm2(mycc, t1, t2, l1, l2)
-    mo_a = mf.mo_coeff[0]
-    mo_b = mf.mo_coeff[1]
-    nmoa = mo_a.shape[1]
-    nmob = mo_b.shape[1]
-    eriaa = ao2mo.kernel(mf._eri, mo_a, compact=False).reshape([nmoa]*4)
-    eribb = ao2mo.kernel(mf._eri, mo_b, compact=False).reshape([nmob]*4)
-    eriab = ao2mo.kernel(mf._eri, (mo_a,mo_a,mo_b,mo_b), compact=False)
-    eriab = eriab.reshape([nmoa,nmoa,nmob,nmob])
-    hcore = mf.get_hcore()
-    h1a = reduce(numpy.dot, (mo_a.T.conj(), hcore, mo_a))
-    h1b = reduce(numpy.dot, (mo_b.T.conj(), hcore, mo_b))
-    e1 = numpy.einsum('ij,ji', h1a, dm1a)
-    e1+= numpy.einsum('ij,ji', h1b, dm1b)
-    e1+= numpy.einsum('ijkl,ijkl', eriaa, dm2aa) * .5
-    e1+= numpy.einsum('ijkl,ijkl', eriab, dm2ab)
-    e1+= numpy.einsum('ijkl,ijkl', eribb, dm2bb) * .5
-    e1+= mol.energy_nuc()
-    print(e1 - mycc.e_tot)
-
-    from pyscf.fci import direct_uhf
-    mol = gto.Mole()
-    mol.verbose = 0
-    mol.atom = [
-        ['H', ( 1.,-1.    , 0.   )],
-        ['H', ( 0.,-1.    ,-1.   )],
-        ['H', ( 1.,-0.5   , 0.   )],
-        ['H', ( 0.,-1.    , 1.   )],
-    ]
-    mol.charge = 2
-    mol.spin = 2
-    mol.basis = '6-31g'
-    mol.build()
-    mf = scf.UHF(mol).run(init_guess='hcore', conv_tol=1.)
-    ehf0 = mf.e_tot - mol.energy_nuc()
-    mycc = uccsd.UCCSD(mf).run()
-    mycc.solve_lambda()
-    eri_aa = ao2mo.kernel(mf._eri, mf.mo_coeff[0])
-    eri_bb = ao2mo.kernel(mf._eri, mf.mo_coeff[1])
-    eri_ab = ao2mo.kernel(mf._eri, [mf.mo_coeff[0], mf.mo_coeff[0],
-                                    mf.mo_coeff[1], mf.mo_coeff[1]])
-    h1a = reduce(numpy.dot, (mf.mo_coeff[0].T, mf.get_hcore(), mf.mo_coeff[0]))
-    h1b = reduce(numpy.dot, (mf.mo_coeff[1].T, mf.get_hcore(), mf.mo_coeff[1]))
-    efci, fcivec = direct_uhf.kernel((h1a,h1b), (eri_aa,eri_ab,eri_bb),
-                                     h1a.shape[0], mol.nelec)
-    dm1ref, dm2ref = direct_uhf.make_rdm12s(fcivec, h1a.shape[0], mol.nelec)
-    t1, t2 = mycc.t1, mycc.t2
-    l1, l2 = mycc.l1, mycc.l2
-    rdm1 = make_rdm1(mycc, t1, t2, l1, l2)
-    rdm2 = make_rdm2(mycc, t1, t2, l1, l2)
-    print('dm1a', abs(dm1ref[0] - rdm1[0]).max())
-    print('dm1b', abs(dm1ref[1] - rdm1[1]).max())
-    print('dm2aa', abs(dm2ref[0] - rdm2[0]).max())
-    print('dm2ab', abs(dm2ref[1] - rdm2[1]).max())
-    print('dm2bb', abs(dm2ref[2] - rdm2[2]).max())

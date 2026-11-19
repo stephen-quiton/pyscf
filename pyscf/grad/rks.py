@@ -52,7 +52,7 @@ def get_veff(ks_grad, mol=None, dm=None):
                                          max_memory=max_memory,
                                          verbose=ks_grad.verbose)
         if mf.do_nlc():
-            if ni.libxc.is_nlc(mf.xc):
+            if ni.is_nlc(mf.xc):
                 xc = mf.xc
             else:
                 xc = mf.nlc
@@ -66,7 +66,7 @@ def get_veff(ks_grad, mol=None, dm=None):
         exc, vxc = get_vxc(ni, mol, grids, mf.xc, dm,
                            max_memory=max_memory, verbose=ks_grad.verbose)
         if mf.do_nlc():
-            if ni.libxc.is_nlc(mf.xc):
+            if ni.is_nlc(mf.xc):
                 xc = mf.xc
             else:
                 xc = mf.nlc
@@ -76,7 +76,7 @@ def get_veff(ks_grad, mol=None, dm=None):
             vxc += vnlc
     t0 = logger.timer(ks_grad, 'vxc', *t0)
 
-    if not ni.libxc.is_hybrid_xc(mf.xc):
+    if not ni.is_hybrid_xc(mf.xc):
         vj = ks_grad.get_j(mol, dm)
         vxc += vj
     else:
@@ -494,7 +494,7 @@ def grids_response_becke(grids):
     atm_dist = gto.inter_distance(mol, atm_coords)
 
     def _radii_adjust(mol, atomic_radii):
-        charges = mol.atom_charges()
+        charges = radi._atomic_radii_charges(mol)
         if grids.radii_adjust == radi.treutler_atomic_radii_adjust:
             rad = numpy.sqrt(atomic_radii[charges]) + 1e-200
         elif grids.radii_adjust == radi.becke_atomic_radii_adjust:

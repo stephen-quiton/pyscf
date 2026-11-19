@@ -267,7 +267,7 @@ def eval_rho2(cell, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
                 for i in range(1, 4):
                     c1 = _dot_ao_dm(cell, ao[i], cneg, non0tab, shls_slice, ao_loc)
                     rho[i] -= _contract_rho(c0, c1) * 2  # *2 for +c.c.
-                    rho5 -= _contract_rho(c1, c1)
+                    rho5 += _contract_rho(c1, c1)  # Negative occupations are subtracted below.
                 if with_lapl:
                     XX, YY, ZZ = 4, 7, 9
                     ao2 = ao[XX] + ao[YY] + ao[ZZ]
@@ -1124,7 +1124,7 @@ class NumInt(lib.StreamObject, numint.LibXCMixin):
 
     def to_gpu(self):
         from gpu4pyscf.pbc.dft.numint import NumInt # type: ignore
-        return NumInt()
+        return NumInt().set(omega=self.omega)
 
 _NumInt = NumInt
 
@@ -1341,6 +1341,6 @@ class KNumInt(lib.StreamObject, numint.LibXCMixin):
 
     def to_gpu(self):
         from gpu4pyscf.pbc.dft.numint import KNumInt # type: ignore
-        return KNumInt()
+        return KNumInt().set(omega=self.omega)
 
 _KNumInt = KNumInt

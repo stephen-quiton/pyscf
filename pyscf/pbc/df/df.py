@@ -439,7 +439,7 @@ class GDF(lib.StreamObject, aft.AFTDFMixin):
         k-mesh and return a (Nk, Nao, Nao) array.
 
         Note: This API has changed since PySCF-2.10. In PySCF 2.9 (or older), if
-        `kpts` is not specified, this funciton may return a (Nao, Nao) matrix for
+        `kpts` is not specified, this function may return a (Nao, Nao) matrix for
         the gamma point and a (Nk, Nao, Nao) array for other k-points.
         '''
         cell = self.cell
@@ -465,7 +465,7 @@ class GDF(lib.StreamObject, aft.AFTDFMixin):
         k-mesh and return a (Nk, Nao, Nao) array.
 
         Note: This API has changed since PySCF-2.10. In PySCF 2.9 (or older), if
-        `kpts` is not specified, this funciton may return a (Nao, Nao) matrix for
+        `kpts` is not specified, this function may return a (Nao, Nao) matrix for
         the gamma point and a (Nk, Nao, Nao) array for other k-points.
         '''
         cell = self.cell
@@ -750,7 +750,8 @@ class CDERIArray:
             tril = _hstack_datasets([dat_ij[str(i)] for i in range(len(dat_ij))], slices)
             triu = _hstack_datasets([dat_ji[str(i)] for i in range(len(dat_ji))], slices)
             assert tril.dtype == numpy.complex128
-            naux = self.naux
+            naux = tril.shape[0]
+            assert triu.shape[0] == naux
             nao = self.nao
             out = numpy.empty((naux, nao*nao), dtype=tril.dtype)
             libpbc.PBCunpack_tril_triu(out.ctypes.data_as(ctypes.c_void_p),

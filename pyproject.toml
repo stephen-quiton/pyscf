@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "cmake<4.0"]
+requires = ["setuptools>=61.0", "wheel", "cmake"]
 build-backend = "setuptools.build_meta"
 
 
@@ -59,7 +59,7 @@ semiempirical = ['pyscf-semiempirical']
 cppe = ["cppe"]
 pyqmc = ["pyqmc"]
 bse = ["basis-set-exchange"]
-dispersion = ["pyscf-dispersion"]
+dispersion = ["pyscf-dispersion>=1.7.0"]
 ccpy = ["coupled-cluster-py"]
 trexio = ["trexio"]
 

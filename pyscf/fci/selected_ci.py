@@ -791,7 +791,23 @@ it is recommended to use the Dice program (https://github.com/sanshar/Dice.git).
         '''
         na = len(ci_strs[0])
         nb = len(ci_strs[1])
-        ci0 = direct_spin1._get_init_guess(na, nb, nroots, hdiag, nelec)
+        # Unlike a full FCI space, the alpha and beta string lists of a
+        # selected-CI space are not necessarily identical.  hdiag is then
+        # not symmetric under exchanging the two strings, so the lowest
+        # diagonal element can be outside the lower triangle and the whole
+        # diagonal has to be searched.
+        if hdiag.size <= nroots:
+            addrs = numpy.arange(hdiag.size)
+        else:
+            addrs = numpy.argpartition(hdiag, nroots-1)[:nroots]
+        ci0 = []
+        for addr in addrs:
+            x = numpy.zeros(na*nb)
+            x[addr] = 1
+            ci0.append(x)
+        # Add noise to avoid a symmetric initial vector
+        ci0[0][0] += 1e-5
+        ci0[0][-1] -= 1e-5
         return [_as_SCIvector(x, ci_strs) for x in ci0]
 
     make_hdiag = staticmethod(make_hdiag)
@@ -971,60 +987,3 @@ def _as_SCIvector_if_not(civec, ci_strs):
     if getattr(civec, '_strs', None) is None:
         civec = _as_SCIvector(civec, ci_strs)
     return civec
-
-if __name__ == '__main__':
-    from functools import reduce
-    from pyscf import gto
-    from pyscf import scf
-    from pyscf.fci import spin_op
-    from pyscf.fci import addons
-
-    mol = gto.Mole()
-    mol.verbose = 0
-    mol.output = None
-    mol.atom = [
-        ['H', ( 1.,-1.    , 0.   )],
-        ['H', ( 0.,-1.    ,-1.   )],
-        ['H', ( 1.,-0.5   ,-1.   )],
-        ['H', ( 0.,-0.    ,-1.   )],
-        ['H', ( 1.,-0.5   , 0.   )],
-        ['H', ( 0., 1.    , 1.   )],
-        ['H', ( 1., 2.    , 3.   )],
-        ['H', ( 1., 2.    , 4.   )],
-    ]
-    mol.basis = 'sto-3g'
-    mol.build()
-
-    m = scf.RHF(mol)
-    m.kernel()
-    norb = m.mo_coeff.shape[1]
-    nelec = mol.nelectron
-    h1e = reduce(numpy.dot, (m.mo_coeff.T, m.get_hcore(), m.mo_coeff))
-    eri = ao2mo.kernel(m._eri, m.mo_coeff, compact=False)
-    eri = eri.reshape(norb,norb,norb,norb)
-
-    e1, c1 = kernel(h1e, eri, norb, nelec)
-    e2, c2 = direct_spin1.kernel(h1e, eri, norb, nelec)
-    print(e1, e1 - -11.894559902235565, 'diff to FCI', e1-e2)
-
-    print(c1.shape, c2.shape)
-    dm1_1 = make_rdm1(c1, norb, nelec)
-    dm1_2 = direct_spin1.make_rdm1(c2, norb, nelec)
-    print(abs(dm1_1 - dm1_2).sum())
-    dm2_1 = make_rdm2(c1, norb, nelec)
-    dm2_2 = direct_spin1.make_rdm12(c2, norb, nelec)[1]
-    print(abs(dm2_1 - dm2_2).sum())
-
-    myci = SelectedCI()
-    e, c = kernel_fixed_space(myci, h1e, eri, norb, nelec, c1._strs)
-    print(e - -11.894559902235565)
-
-    print(myci.large_ci(c1, norb, nelec))
-    print(myci.spin_square(c1, norb, nelec)[0] -
-          spin_op.spin_square0(to_fci(c1, norb, nelec), norb, nelec)[0])
-
-    myci = SelectedCI()
-    myci = addons.fix_spin_(myci)
-    e1, c1 = myci.kernel(h1e, eri, norb, nelec)
-    print(e1, e1 - -11.89467612053687)
-    print(myci.spin_square(c1, norb, nelec))

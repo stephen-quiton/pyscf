@@ -143,7 +143,7 @@ def loads(cellstr):
     cell._atm = np.array(cell._atm, dtype=np.int32)
     cell._bas = np.array(cell._bas, dtype=np.int32)
     cell._env = np.array(cell._env, dtype=np.double)
-    cell._ecpbas = np.array(cell._ecpbas, dtype=np.int32)
+    cell._ecpbas = np.array(cell._ecpbas, dtype=np.int32).reshape(-1, mole.BAS_SLOTS)
     cell._mesh = np.array(cell._mesh)
 
     # Symmetry class cannot be serialized by dumps function.
@@ -1593,7 +1593,7 @@ class Cell(mole.MoleBase):
         c = np.array([a[1] for a in _atoms]).dot(_a)
         return [(a[0], r) for a, r in zip(_atoms, c.tolist())]
 
-#Note: Exculde dump_input, parse_arg, basis from kwargs to avoid parsing twice
+# Note: Exclude dump_input, parse_arg, basis from kwargs to avoid parsing twice
     def build(self, dump_input=True, parse_arg=mole.ARGPARSE,
               a=None, mesh=None, ke_cutoff=None, precision=None, nimgs=None,
               h=None, dimension=None, rcut= None, low_dim_ft_type=None,
@@ -1609,7 +1609,7 @@ class Cell(mole.MoleBase):
                 The real-space cell lattice vectors. Each row represents
                 a lattice vector.
             fractional : bool
-                Whether the atom postions are specified in fractional coordinates.
+                Whether the atom positions are specified in fractional coordinates.
                 The default value is False, which means the coordinates are
                 interpreted as Cartesian coordinate.
             mesh : (3,) ndarray of ints
@@ -1741,6 +1741,10 @@ class Cell(mole.MoleBase):
                         '%d contracted functions', nprim_drop, nctr_drop)
             #logger.debug1(self, 'Old shells %s', steep_shls)
 
+            if self.symmetry:
+                # MoleBase.build initialized symmetry with the unpruned basis.
+                self._build_symmetry()
+
         if self.rcut is None or self._rcut_from_build:
             self._rcut = estimate_rcut(self, self.precision)
             self._rcut_from_build = True
@@ -1774,6 +1778,8 @@ class Cell(mole.MoleBase):
         if self.space_group_symmetry:
             _check_mesh_symm = not self._mesh_from_build
             self.build_lattice_symmetry(check_mesh_symmetry=_check_mesh_symm)
+        else:
+            self.lattice_symmetry = None
 
         if dump_input and not _built and self.verbose > logger.NOTE:
             self.dump_input()

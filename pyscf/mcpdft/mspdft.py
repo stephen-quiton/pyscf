@@ -275,7 +275,7 @@ class _MSPDFT (mcpdft.MultiStateMCPDFTSolver):
         self.max_cyc_diabatize = MAX_CYC_DIABATIZE
         self.conv_tol_diabatize = CONV_TOL_DIABATIZE
         self.sing_tol_diabatize = SING_TOL_DIABATIZE
-        self.nudge_tol_diabatize = CONV_TOL_DIABATIZE
+        self.nudge_tol_diabatize = NUDGE_TOL_DIABATIZE
         self.diabatization = diabatization
         self.si_mcscf = None
         self.si_pdft = None
@@ -636,23 +636,3 @@ def multi_state (mc, weights=(0.5,0.5), diabatization='CMS', **kwargs):
         pass
     MSPDFT.__name__ = diabatization.upper () + base_name
     return MSPDFT (mc, diabatizer, diabatize, diabatization)
-
-
-if __name__ == '__main__':
-    # This ^ is a convenient way to debug code that you are working on. The
-    # code in this block will only execute if you run this python script as the
-    # input directly: "python mspdft.py".
-
-    from pyscf import scf, gto
-    from pyscf.tools import molden # My version is better for MC-SCF
-    from pyscf.fci import csf_solver
-    xyz = '''O  0.00000000   0.08111156   0.00000000
-             H  0.78620605   0.66349738   0.00000000
-             H -0.78620605   0.66349738   0.00000000'''
-    mol = gto.M (atom=xyz, basis='sto-3g', symmetry=False, output='mspdft.log',
-        verbose=lib.logger.DEBUG)
-    mf = scf.RHF (mol).run ()
-    mc = mcpdft.CASSCF (mf, 'tPBE', 4, 4).set (fcisolver = csf_solver (mol, 1))
-    mc = mc.multi_state ([1.0/3,]*3, 'cms').run ()
-
-

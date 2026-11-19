@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import unittest
+from pyscf import gto, dft
 import numpy as np
 import pyscf
 from pyscf.dft import rks
@@ -111,7 +112,8 @@ def analytical_d2enlc(mf):
     return analytical_hessian
 
 class KnownValues(unittest.TestCase):
-    def test_vv10_only_hessian_direct_high_cost(self):
+    # _veryhigh_cost: runs in a dedicated CI job with a longer timeout.
+    def test_vv10_only_hessian_direct_veryhigh_cost(self):
         mf = make_mf(mol, vv10_only = True)
 
         # reference_hessian = numerical_d2enlc(mf)
@@ -186,7 +188,7 @@ class KnownValues(unittest.TestCase):
 
         assert np.linalg.norm(test_hessian - reference_hessian) < 1e-5
 
-    def test_vv10_only_hessian_density_fitting_high_cost(self):
+    def test_vv10_only_hessian_density_fitting_veryhigh_cost(self):
         mf = make_mf(mol, vv10_only = True, density_fitting = True)
 
         # reference_hessian = numerical_d2enlc(mf)
@@ -261,7 +263,9 @@ class KnownValues(unittest.TestCase):
 
         assert np.linalg.norm(test_hessian - reference_hessian) < 2e-5
 
-    def test_wb97xv_hessian_high_cost(self):
+    # Tight-grid variant; was shadowed by the loose-grid test below and
+    # never ran.
+    def test_wb97xv_hessian_veryhigh_cost(self):
         mf = make_mf(mol, vv10_only = False, density_fitting = True)
         # reference_hessian = numerical_d2enlc(mf)
         reference_hessian = np.array([[[[ 0.4979170248502474,  0.0488882371119104,  0.2658377292182879],
@@ -337,7 +341,7 @@ class KnownValues(unittest.TestCase):
 
     # If you wonder what is special about sto-6g? The answer is: It will trigger prune_by_density_() function
     # and remove some grids there.
-    def test_wb97xv_sto6g_hessian_high_cost(self):
+    def test_wb97xv_sto6g_hessian_veryhigh_cost(self):
         mol_copy = mol.copy()
         mol_copy.basis = "sto-6g"
         mol_copy.build()
@@ -493,7 +497,6 @@ class KnownValues(unittest.TestCase):
     def test_vv10_only_hessian_density_fitting(self):
         mf = make_mf(mol, nlcgrid=(6, 50), vv10_only = True, density_fitting = True)
 
-        print('test_vv10_only_hessian_density_fitting')
         # reference_hessian = numerical_d2enlc(mf)
         reference_hessian = np.array([[[[ 0.542168430863188 ,  0.0609222841019275,  0.405984842392626 ],
          [ 0.0608663024931344,  0.2411645990134659,  0.0172038828970544],
@@ -566,7 +569,7 @@ class KnownValues(unittest.TestCase):
 
         assert abs(test_hessian - reference_hessian).max() < 6e-3
 
-    def test_wb97xv_hessian(self):
+    def test_wb97xv_hessian_high_cost(self):
         mf = make_mf(mol, nlcgrid=(6, 50), vv10_only = False, density_fitting = True)
         # reference_hessian = numerical_d2enlc(mf)
         reference_hessian = np.array([[[[ 0.4988631231107599,  0.0489672839414368,  0.2660577198785319],
@@ -640,7 +643,7 @@ class KnownValues(unittest.TestCase):
 
         assert abs(test_hessian - reference_hessian).max() < 4e-3
 
-    def test_vv10_energy_second_derivative_high_cost(self):
+    def test_vv10_energy_second_derivative_veryhigh_cost(self):
         mf = make_mf(mol, vv10_only = True, density_fitting = True)
         hess_obj = mf.Hessian()
 
@@ -657,6 +660,39 @@ class KnownValues(unittest.TestCase):
         test_dF = _get_vnlc_deriv1(hess_obj, mf.mo_coeff, mf.mo_occ, max_memory = 2000)
 
         assert np.linalg.norm(test_dF - reference_dF) < 5e-8
+
+    def make_nlc_reference(self):
+        mol = gto.M(atom='H 0 0 0; H 0 0 1.4', unit='Bohr', basis='6-31g', verbose=0)
+        mf = dft.RKS(mol, xc='wb97x-v')
+        mf.grids.level = 0
+        mf.nlcgrids.atom_grid = (10, 14)
+        mf.conv_tol = 1e-12
+        return mf.run()
+
+    def test_fock_derivative_with_grid_response(self):
+        mf = self.make_nlc_reference()
+        hess = mf.Hessian()
+        actual = _get_vnlc_deriv1(hess, mf.mo_coeff, mf.mo_occ, 2000)
+        reference = _get_vnlc_deriv1_numerical(hess, mf.mo_coeff, mf.mo_occ, 2000)
+        np.testing.assert_allclose(actual, reference, atol=2e-7)
+
+    def test_numerical_energy_curvature(self):
+        mf = self.make_nlc_reference()
+        hess = mf.Hessian()
+        dm = mf.make_rdm1()
+        actual = _get_enlc_deriv2_numerical(hess, mf.mo_coeff, mf.mo_occ, 2000)
+        eps = 1e-3
+        energies = []
+        for sign in (1, 0, -1):
+            coords = mf.mol.atom_coords()
+            coords[1, 2] += sign*eps
+            mol = mf.mol.set_geom_(coords, unit='Bohr', inplace=False)
+            grids = dft.gen_grid.Grids(mol)
+            grids.atom_grid = (10, 14)
+            grids.build()
+            energies.append(mf._numint.nr_nlc_vxc(mol, grids, mf.xc, dm)[1])
+        reference = (energies[0]-2*energies[1]+energies[2])/eps**2
+        self.assertAlmostEqual(actual[1, 1, 2, 2], reference, delta=2e-7)
 
 if __name__ == "__main__":
     print("Full Tests for RKS Hessian with VV10")

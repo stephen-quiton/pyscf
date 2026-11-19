@@ -18,6 +18,7 @@ import numpy
 import unittest
 from pyscf import gto
 from pyscf import lib
+from pyscf import scf
 from pyscf.x2c import x2c, dft
 try:
     import mcfun
